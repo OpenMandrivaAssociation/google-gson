@@ -4,10 +4,10 @@
 
 Name:             google-%{short_name}
 Version:          2.2.4
-Release:          3.0%{?dist}
+Release:          6.1
 Summary:          Java lib for conversion of Java objects into JSON representation
 License:          ASL 2.0
-
+Group:		  Development/Java
 URL:              http://code.google.com/p/%{name}
 # request for tarball: http://code.google.com/p/google-gson/issues/detail?id=283
 # svn export http://google-gson.googlecode.com/svn/tags/gson-%{version} google-gson-%{version}
@@ -49,33 +49,22 @@ sed -i 's/\r//g' LICENSE
 
 %build
 # LANG="C" or LANG="en_US.utf8" needed for the tests
-mvn-rpmbuild -Dmaven.test.failure.ignore=true install 
+%mvn_build -- -Dmaven.test.failure.ignore=true
 
 %install
-# jars
-install -d -m 755 %{buildroot}%{_javadir}
-install -p -m 644 target/%{short_name}-%{version}.jar %{buildroot}%{_javadir}/%{name}.jar
+%mvn_install
 
-# pom
-install -d -m 755 %{buildroot}%{_mavenpomdir}
-install -pm 644 pom.xml %{buildroot}%{_mavenpomdir}/JPP-%{name}.pom
-%add_maven_depmap JPP-%{name}.pom %{name}.jar
-
-# javadoc
-install -d -m 755 %{buildroot}%{_javadocdir}/%{name}
-cp -pr target/apidocs/* %{buildroot}%{_javadocdir}/%{name}
-
-%files
+%files -f .mfiles
 %doc LICENSE README
-%{_javadir}/%{name}.jar
-%{_mavenpomdir}/JPP-%{name}.pom
-%{_mavendepmapfragdir}/%{name}
 
-%files javadoc
+%files javadoc -f .mfiles-javadoc
 %doc LICENSE
-%doc %{_javadocdir}/%{name}
 
 %changelog
+* Tue Jun 10 2014 Severin Gehwolf <sgehwolf@redhat.com> - 2.2.4-6
+- Move to xmvn style packaging.
+- Fix FTBFS. Resolves RHBZ#1106707.
+
 * Mon Aug 05 2013 Severin Gehwolf <sgehwolf@redhat.com> 2.2.4-3
 - Add BR maven-install-plugin, resolves RHBZ#992422.
 
