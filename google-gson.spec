@@ -4,7 +4,7 @@
 
 Name:             google-%{short_name}
 Version:          2.2.4
-Release:          6.2
+Release:          6.3
 Summary:          Java lib for conversion of Java objects into JSON representation
 License:          ASL 2.0
 Group:		  Development/Java
