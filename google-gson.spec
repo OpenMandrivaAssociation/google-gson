@@ -8,7 +8,7 @@ Release:          6.3
 Summary:          Java lib for conversion of Java objects into JSON representation
 License:          ASL 2.0
 Group:		  Development/Java
-URL:              http://code.google.com/p/%{name}
+URL:              https://code.google.com/p/%{name}
 # request for tarball: http://code.google.com/p/google-gson/issues/detail?id=283
 # svn export http://google-gson.googlecode.com/svn/tags/gson-%{version} google-gson-%{version}
 # tar caf google-gson-%{version}.tar.xz google-gson-%{version}
