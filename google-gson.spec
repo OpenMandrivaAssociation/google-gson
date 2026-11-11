@@ -1,11 +1,13 @@
 Name:		google-gson
 Version:	2.15.0
-Release:	1
+Release:	2
 Summary:	Java library for converting objects to JSON and back
 Group:		Development/Java
 License:	ASL 2.0
 URL:		https://github.com/google/gson
 Source0:	https://github.com/google/gson/archive/refs/tags/gson-parent-%{version}.tar.gz#/gson-%{version}.tar.gz
+# Gradle 9.9.1 strictly pins 2.14.0. The tag archive has no prebuilt jars.
+Source1:	https://github.com/google/gson/archive/refs/tags/gson-parent-2.14.0.tar.gz#/gson-2.14.0.tar.gz
 
 BuildArch:	noarch
 Obsoletes:	%{name}-javadoc < %{version}
@@ -21,7 +23,9 @@ Gson converts Java objects to JSON and back. 2.15.0 adds
 JsonReader.getCharacterOffset, uses LinkedHashMap as the default map,
 and accepts only numeric IP addresses for InetAddress. The Error Prone
 checker is not packaged, so the parent build is not used. The annotation
-jar stays a normal dependency. Tests are skipped.
+jar stays a normal dependency. Tests are skipped. %{version} stays
+the default jar. Gradle 9.9.1 strictly pins 2.14.0, so that jar is
+installed beside it.
 
 %prep
 %autosetup -n gson-gson-parent-%{version}
@@ -186,6 +190,102 @@ for path in Path(".").rglob("pom.xml"):
     if path.resolve() != Path("pom.xml").resolve():
         path.unlink()
 PY
+%setup -q -T -D -a 1 -n gson-gson-parent-%{version}
+find gson-gson-parent-2.14.0 \( -name '*.jar' -o -name '*.class' -o -name '*.so' -o -name '*.node' -o -name '*.wasm' \) -delete
+python - <<'PY'
+from pathlib import Path
+root = Path("gson-gson-parent-2.14.0/gson")
+template = root / "src/main/java-templates/com/google/gson/internal/GsonBuildConfig.java"
+text = template.read_text(encoding="utf-8").replace("${project.version}", "2.14.0")
+if "${" in text:
+    raise SystemExit("placeholder left")
+dest = root / "src/main/java/com/google/gson/internal/GsonBuildConfig.java"
+dest.write_text(text, encoding="utf-8")
+module_info = root / "src/main/java/module-info.java"
+if module_info.is_file():
+    module_info.unlink()
+PY
+
+%build -a
+export JAVA_HOME="${JAVA_HOME:-%{_jvmdir}/java-openjdk}"
+export PATH="$JAVA_HOME/bin:$PATH"
+mkdir -p gson214/classes
+find gson-gson-parent-2.14.0/gson/src/main/java -name '*.java' > gson214/sources.list
+test -s gson214/sources.list
+javac --release 8 -encoding UTF-8 -Xlint:-options \
+	-cp %{_javadir}/error_prone_annotations.jar \
+	-d gson214/classes @gson214/sources.list
+jar cf gson214/gson.jar -C gson214/classes .
+cat > gson214/gson.pom << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.google.code.gson</groupId>
+  <artifactId>gson</artifactId>
+  <version>2.14.0</version>
+  <name>Gson</name>
+  <description>Java library for converting objects to JSON and back.</description>
+  <url>https://github.com/google/gson</url>
+  <licenses>
+    <license>
+      <name>Apache-2.0</name>
+      <url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+    </license>
+  </licenses>
+  <dependencies>
+    <dependency>
+      <groupId>com.google.errorprone</groupId>
+      <artifactId>error_prone_annotations</artifactId>
+      <version>2.50.0</version>
+    </dependency>
+  </dependencies>
+</project>
+EOF
+
+%install -p
+sysjar install --buildroot %{buildroot} \
+	--artifact gson214/gson.pom:gson214/gson.jar \
+	--file-name gson-2.14.0 \
+	--filelist .mfiles214
+# %{version} owns gson.sysjar. 2.14.0 keeps a second index file.
+/bin/mv %{buildroot}/usr/share/sysjar/index/com.google.code.gson/gson.sysjar \
+	%{buildroot}/usr/share/sysjar/index/com.google.code.gson/gson-2.14.0.sysjar
+sed -i 's|/usr/share/sysjar/index/com.google.code.gson/gson\.sysjar|/usr/share/sysjar/index/com.google.code.gson/gson-2.14.0.sysjar|' .mfiles214
+
+%install -a
+while IFS= read -r line; do
+	grep -qxF -- "$line" .mfiles || printf '%s\n' "$line" >> .mfiles
+done < .mfiles214
+
+%check
+export JAVA_HOME="${JAVA_HOME:-%{_jvmdir}/java-openjdk}"
+export PATH="$JAVA_HOME/bin:$PATH"
+cat > GsonSmoke.java << 'EOF'
+import com.google.gson.Gson;
+public class GsonSmoke {
+	public static void main(String[] args) {
+		Gson gson = new Gson();
+		String json = gson.toJson(Integer.valueOf(42));
+		int n = gson.fromJson(json, Integer.class).intValue();
+		if (n != 42) {
+			throw new AssertionError(json);
+		}
+		System.out.println(args[0] + " " + n);
+	}
+}
+EOF
+javac --release 8 -encoding UTF-8 -Xlint:-options \
+	-cp "%{buildroot}%{_javadir}/gson.jar:%{_javadir}/error_prone_annotations.jar" \
+	-d . GsonSmoke.java
+java -cp "%{buildroot}%{_javadir}/gson.jar:%{_javadir}/error_prone_annotations.jar:." GsonSmoke gson215_ok > check215.log
+cat check215.log
+grep -F -q 'gson215_ok 42' check215.log
+javac --release 8 -encoding UTF-8 -Xlint:-options \
+	-cp "%{buildroot}%{_javadir}/gson-2.14.0.jar:%{_javadir}/error_prone_annotations.jar" \
+	-d . GsonSmoke.java
+java -cp "%{buildroot}%{_javadir}/gson-2.14.0.jar:%{_javadir}/error_prone_annotations.jar:." GsonSmoke gson214_ok > check214.log
+cat check214.log
+grep -F -q 'gson214_ok 42' check214.log
 
 %files -f .mfiles
 %doc LICENSE README.md CHANGELOG.md
